@@ -69,7 +69,7 @@ def get_loaders(tr_data, val_data, te_data, tr_inds, val_inds, te_inds, transfor
 
         tr_loader =  LinkNeighborLoader(tr_data, num_neighbors=args.num_neighs, 
                                     edge_label_index=(('node', 'to', 'node'), tr_edge_label_index), 
-                                    edge_label=tr_edge_label, batch_size=args.batch_size, shuffle=True, transform=transform)
+                                    edge_label=tr_edge_label, batch_size=args.batch_size, shuffle=True, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4)
         
         val_edge_label_index = val_data['node', 'to', 'node'].edge_index[:,val_inds]
         val_edge_label = val_data['node', 'to', 'node'].y[val_inds]
@@ -77,7 +77,7 @@ def get_loaders(tr_data, val_data, te_data, tr_inds, val_inds, te_inds, transfor
 
         val_loader =  LinkNeighborLoader(val_data, num_neighbors=args.num_neighs, 
                                     edge_label_index=(('node', 'to', 'node'), val_edge_label_index), 
-                                    edge_label=val_edge_label, batch_size=args.batch_size, shuffle=False, transform=transform)
+                                    edge_label=val_edge_label, batch_size=args.batch_size, shuffle=False, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4)
         
         te_edge_label_index = te_data['node', 'to', 'node'].edge_index[:,te_inds]
         te_edge_label = te_data['node', 'to', 'node'].y[te_inds]
@@ -85,13 +85,13 @@ def get_loaders(tr_data, val_data, te_data, tr_inds, val_inds, te_inds, transfor
 
         te_loader =  LinkNeighborLoader(te_data, num_neighbors=args.num_neighs, 
                                     edge_label_index=(('node', 'to', 'node'), te_edge_label_index), 
-                                    edge_label=te_edge_label, batch_size=args.batch_size, shuffle=False, transform=transform)
+                                    edge_label=te_edge_label, batch_size=args.batch_size, shuffle=False, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4)
     else:
-        tr_loader =  LinkNeighborLoader(tr_data, num_neighbors=args.num_neighs, batch_size=args.batch_size, shuffle=True, transform=transform)
+        tr_loader =  LinkNeighborLoader(tr_data, num_neighbors=args.num_neighs, batch_size=args.batch_size, shuffle=True, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4)
         val_loader = LinkNeighborLoader(val_data,num_neighbors=args.num_neighs, edge_label_index=val_data.edge_index[:, val_inds],
-                                        edge_label=val_data.y[val_inds], batch_size=args.batch_size, shuffle=False, transform=transform)
+                                        edge_label=val_data.y[val_inds], batch_size=args.batch_size, shuffle=False, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4)
         te_loader =  LinkNeighborLoader(te_data,num_neighbors=args.num_neighs, edge_label_index=te_data.edge_index[:, te_inds],
-                                edge_label=te_data.y[te_inds], batch_size=args.batch_size, shuffle=False, transform=transform)
+                                edge_label=te_data.y[te_inds], batch_size=args.batch_size, shuffle=False, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4)
         
     return tr_loader, val_loader, te_loader
 
@@ -100,6 +100,7 @@ def evaluate_homo(loader, inds, model, data, device, args):
     '''Evaluates the model performane for homogenous graph data.'''
     preds = []
     ground_truths = []
+    pred_probs = []
     for batch in tqdm.tqdm(loader, disable=not args.tqdm):
         #select the seed edges from which the batch was created
         inds = inds.detach().cpu()
@@ -132,14 +133,29 @@ def evaluate_homo(loader, inds, model, data, device, args):
             batch.to(device)
             out = model(batch.x, batch.edge_index, batch.edge_attr)
             out = out[mask]
+            probs = torch.nn.functional.softmax(out, dim=-1)[:, 1]
             pred = out.argmax(dim=-1)
             preds.append(pred)
+            pred_probs.append(probs)
             ground_truths.append(batch.y[mask])
+            
     pred = torch.cat(preds, dim=0).cpu().numpy()
+    pred_probs = torch.cat(pred_probs, dim=0).cpu().numpy()
     ground_truth = torch.cat(ground_truths, dim=0).cpu().numpy()
-    f1 = f1_score(ground_truth, pred)
+    
+    from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score, average_precision_score
+    f1 = f1_score(ground_truth, pred, zero_division=0)
+    prec = precision_score(ground_truth, pred, zero_division=0)
+    rec = recall_score(ground_truth, pred, zero_division=0)
+    
+    try:
+        roc_auc = roc_auc_score(ground_truth, pred_probs)
+        pr_auc = average_precision_score(ground_truth, pred_probs)
+    except ValueError:
+        roc_auc = 0.0
+        pr_auc = 0.0
 
-    return f1
+    return f1, prec, rec, roc_auc, pr_auc
 
 @torch.no_grad()
 def evaluate_hetero(loader, inds, model, data, device, args):
@@ -191,11 +207,14 @@ def evaluate_hetero(loader, inds, model, data, device, args):
 
 def save_model(model, optimizer, epoch, args, data_config):
     # Save the model in a dictionary
+    import os
+    save_dir = data_config["paths"]["model_to_save"]
+    os.makedirs(save_dir, exist_ok=True)
     torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict()
-                }, f'{data_config["paths"]["model_to_save"]}/checkpoint_{args.unique_name}{"" if not args.finetune else "_finetuned"}.tar')
+                }, f'{save_dir}/checkpoint_{args.unique_name}{"" if not args.finetune else "_finetuned"}.tar')
     
 def load_model(model, device, args, config, data_config):
     checkpoint = torch.load(f'{data_config["paths"]["model_to_load"]}/checkpoint_{args.unique_name}.tar')

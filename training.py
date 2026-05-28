@@ -1,6 +1,6 @@
 import torch
 import tqdm
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, precision_score, recall_score
 from train_util import AddEgoIds, extract_param, add_arange_ids, get_loaders, evaluate_homo, evaluate_hetero, save_model, load_model
 from models import GINe, PNA, GATe, RGCN
 from torch_geometric.data import Data, HeteroData
@@ -9,9 +9,24 @@ from torch_geometric.utils import degree
 import wandb
 import logging
 
+class FocalLoss(torch.nn.Module):
+    def __init__(self, alpha=0.25, gamma=2.0, weight=None):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.weight = weight
+
+    def forward(self, inputs, targets):
+        ce_loss = torch.nn.functional.cross_entropy(inputs, targets, weight=self.weight, reduction='none')
+        pt = torch.exp(-ce_loss)
+        focal_loss = self.alpha * (1 - pt)**self.gamma * ce_loss
+        return focal_loss.mean()
+
 def train_homo(tr_loader, val_loader, te_loader, tr_inds, val_inds, te_inds, model, optimizer, loss_fn, args, config, device, val_data, te_data, data_config):
     #training
-    best_val_f1 = 0
+    best_val_roc = 0
+    patience = 15
+    counter = 0
     for epoch in range(config.epochs):
         total_loss = total_examples = 0
         preds = []
@@ -43,32 +58,52 @@ def train_homo(tr_loader, val_loader, te_loader, tr_inds, val_inds, te_inds, mod
 
         pred = torch.cat(preds, dim=0).detach().cpu().numpy()
         ground_truth = torch.cat(ground_truths, dim=0).detach().cpu().numpy()
-        f1 = f1_score(ground_truth, pred)
-        wandb.log({"f1/train": f1}, step=epoch)
-        logging.info(f'Train F1: {f1:.4f}')
+        f1 = f1_score(ground_truth, pred, zero_division=0)
+        prec = precision_score(ground_truth, pred, zero_division=0)
+        rec = recall_score(ground_truth, pred, zero_division=0)
+        
+        wandb.log({"f1/train": f1, "prec/train": prec, "rec/train": rec}, step=epoch)
+        logging.info(f'Epoch {epoch:02d} | Train F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}')
 
-        #evaluate
-        val_f1 = evaluate_homo(val_loader, val_inds, model, val_data, device, args)
-        te_f1 = evaluate_homo(te_loader, te_inds, model, te_data, device, args)
+        #evaluate validation only
+        val_f1, val_prec, val_rec, val_roc, val_pr = evaluate_homo(val_loader, val_inds, model, val_data, device, args)
 
         wandb.log({"f1/validation": val_f1}, step=epoch)
-        wandb.log({"f1/test": te_f1}, step=epoch)
-        logging.info(f'Validation F1: {val_f1:.4f}')
-        logging.info(f'Test F1: {te_f1:.4f}')
+        logging.info(f'Validation F1: {val_f1:.4f} | Prec: {val_prec:.4f} | Rec: {val_rec:.4f} | ROC-AUC: {val_roc:.4f} | PR-AUC: {val_pr:.4f}')
 
-        if epoch == 0:
-            wandb.log({"best_test_f1": te_f1}, step=epoch)
-        elif val_f1 > best_val_f1:
-            best_val_f1 = val_f1
-            wandb.log({"best_test_f1": te_f1}, step=epoch)
+        if val_roc > best_val_roc:
+            best_val_roc = val_roc
+            counter = 0
             if args.save_model:
                 save_model(model, optimizer, epoch, args, data_config)
+                logging.info(f'New best validation ROC-AUC: {val_roc:.4f}. Model saved.')
+        else:
+            counter += 1
+            logging.info(f'No validation improvement. Early stopping counter: {counter}/{patience}')
+
+        if counter >= patience:
+            logging.info(f'Early stopping triggered after {epoch + 1} epochs.')
+            break
+
+    # evaluate test ONCE at the end of training
+    if args.save_model:
+        try:
+            model, _ = load_model(model, device, args, config, data_config)
+            logging.info("Loaded best model checkpoint for final test set evaluation.")
+        except Exception as e:
+            logging.warning(f"Could not load best checkpoint ({e}). Evaluating final epoch model weights instead.")
+
+    te_f1, te_prec, te_rec, te_roc, te_pr = evaluate_homo(te_loader, te_inds, model, te_data, device, args)
+    wandb.log({"f1/test": te_f1, "roc/test": te_roc, "pr/test": te_pr})
+    logging.info(f'Final Test F1: {te_f1:.4f} | Prec: {te_prec:.4f} | Rec: {te_rec:.4f} | ROC-AUC: {te_roc:.4f} | PR-AUC: {te_pr:.4f}')
     
     return model
 
 def train_hetero(tr_loader, val_loader, te_loader, tr_inds, val_inds, te_inds, model, optimizer, loss_fn, args, config, device, val_data, te_data, data_config):
     #training
     best_val_f1 = 0
+    patience = 15
+    counter = 0
     for epoch in range(config.epochs):
         total_loss = total_examples = 0
         preds = []
@@ -104,24 +139,39 @@ def train_hetero(tr_loader, val_loader, te_loader, tr_inds, val_inds, te_inds, m
         ground_truth = torch.cat(ground_truths, dim=0).detach().cpu().numpy()
         f1 = f1_score(ground_truth, pred)
         wandb.log({"f1/train": f1}, step=epoch)
-        logging.info(f'Train F1: {f1:.4f}')
+        logging.info(f'Epoch {epoch:02d} | Train F1: {f1:.4f}')
 
-        #evaluate
+        #evaluate validation only
         val_f1 = evaluate_hetero(val_loader, val_inds, model, val_data, device, args)
-        te_f1 = evaluate_hetero(te_loader, te_inds, model, te_data, device, args)
 
         wandb.log({"f1/validation": val_f1}, step=epoch)
-        wandb.log({"f1/test": te_f1}, step=epoch)
         logging.info(f'Validation F1: {val_f1:.4f}')
-        logging.info(f'Test F1: {te_f1:.4f}')
 
-        if epoch == 0:
-            wandb.log({"best_test_f1": te_f1}, step=epoch)
-        elif val_f1 > best_val_f1:
+        if val_f1 > best_val_f1:
             best_val_f1 = val_f1
-            wandb.log({"best_test_f1": te_f1}, step=epoch)
+            counter = 0
             if args.save_model:
                 save_model(model, optimizer, epoch, args, data_config)
+                logging.info(f'New best validation F1: {val_f1:.4f}. Model saved.')
+        else:
+            counter += 1
+            logging.info(f'No validation improvement. Early stopping counter: {counter}/{patience}')
+
+        if counter >= patience:
+            logging.info(f'Early stopping triggered after {epoch + 1} epochs.')
+            break
+
+    # evaluate test ONCE at the end of training
+    if args.save_model:
+        try:
+            model, _ = load_model(model, device, args, config, data_config)
+            logging.info("Loaded best model checkpoint for final test set evaluation.")
+        except Exception as e:
+            logging.warning(f"Could not load best checkpoint ({e}). Evaluating final epoch model weights instead.")
+
+    te_f1 = evaluate_hetero(te_loader, te_inds, model, te_data, device, args)
+    wandb.log({"f1/test": te_f1})
+    logging.info(f'Final Test F1: {te_f1:.4f}')
         
     return model
 
@@ -210,9 +260,14 @@ def train_gnn(tr_data, val_data, te_data, tr_inds, val_inds, te_inds, args, data
     if args.reverse_mp:
         model = to_hetero(model, te_data.metadata(), aggr='mean')
     
-    if args.finetune:
+    import os
+    checkpoint_path = f'{data_config["paths"]["model_to_load"]}/checkpoint_{args.unique_name}.tar'
+    if args.finetune or (os.path.exists(checkpoint_path) and not args.overwrite):
+        logging.info(f"Checkpoint found at {checkpoint_path}. Automatically resuming training...")
         model, optimizer = load_model(model, device, args, config, data_config)
     else:
+        if args.overwrite and os.path.exists(checkpoint_path):
+            logging.info(f"Overwrite flag is set. Starting training from scratch (deleting/ignoring checkpoint).")
         model.to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
     
@@ -227,7 +282,8 @@ def train_gnn(tr_data, val_data, te_data, tr_inds, val_inds, te_inds, args, data
     sample_edge_attr = sample_batch.edge_attr if not isinstance(sample_batch, HeteroData) else sample_batch.edge_attr_dict
     logging.info(summary(model, sample_x, sample_edge_index, sample_edge_attr))
     
-    loss_fn = torch.nn.CrossEntropyLoss(weight=torch.FloatTensor([config.w_ce1, config.w_ce2]).to(device))
+    # Using FocalLoss as requested to combat massive class imbalance
+    loss_fn = FocalLoss(alpha=0.25, gamma=2.0, weight=torch.FloatTensor([config.w_ce1, config.w_ce2]).to(device))
 
     if args.reverse_mp:
         model = train_hetero(tr_loader, val_loader, te_loader, tr_inds, val_inds, te_inds, model, optimizer, loss_fn, args, config, device, val_data, te_data, data_config)

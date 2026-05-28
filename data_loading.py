@@ -12,10 +12,32 @@ def get_data(args, data_config):
     2. The data is split into training, validation and test data.
     3. PyG Data objects are created with the respective data splits.
     '''
+    import os
+    cache_dir = f"{data_config['paths']['aml_data']}/{args.data}/processed"
+    os.makedirs(cache_dir, exist_ok=True)
+    suffix = f"_ports{int(args.ports)}_tds{int(args.tds)}_revmp{int(args.reverse_mp)}"
+    cache_files = {
+        'tr_data': f"{cache_dir}/tr_data{suffix}.pt",
+        'val_data': f"{cache_dir}/val_data{suffix}.pt",
+        'te_data': f"{cache_dir}/te_data{suffix}.pt",
+        'tr_inds': f"{cache_dir}/tr_inds{suffix}.pt",
+        'val_inds': f"{cache_dir}/val_inds{suffix}.pt",
+        'te_inds': f"{cache_dir}/te_inds{suffix}.pt",
+    }
+    
+    if all(os.path.exists(path) for path in cache_files.values()):
+        logging.info("Loading preprocessed graph data splits from cache...")
+        tr_data = torch.load(cache_files['tr_data'])
+        val_data = torch.load(cache_files['val_data'])
+        te_data = torch.load(cache_files['te_data'])
+        tr_inds = torch.load(cache_files['tr_inds'])
+        val_inds = torch.load(cache_files['val_inds'])
+        te_inds = torch.load(cache_files['te_inds'])
+        return tr_data, val_data, te_data, tr_inds, val_inds, te_inds
 
     transaction_file = f"{data_config['paths']['aml_data']}/{args.data}/formatted_transactions.csv" #replace this with your path to the respective AML data objects
     df_edges = pd.read_csv(transaction_file)
-
+    
     logging.info(f'Available Edge Features: {df_edges.columns.tolist()}')
 
     df_edges['Timestamp'] = df_edges['Timestamp'] - df_edges['Timestamp'].min()
@@ -136,6 +158,14 @@ def get_data(args, data_config):
     logging.info(f'train data object: {tr_data}')
     logging.info(f'validation data object: {val_data}')
     logging.info(f'test data object: {te_data}')
+
+    logging.info("Saving preprocessed graph data splits to cache...")
+    torch.save(tr_data, cache_files['tr_data'])
+    torch.save(val_data, cache_files['val_data'])
+    torch.save(te_data, cache_files['te_data'])
+    torch.save(tr_inds, cache_files['tr_inds'])
+    torch.save(val_inds, cache_files['val_inds'])
+    torch.save(te_inds, cache_files['te_inds'])
 
     return tr_data, val_data, te_data, tr_inds, val_inds, te_inds
     
