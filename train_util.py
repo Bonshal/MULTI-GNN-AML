@@ -77,7 +77,7 @@ def get_loaders(tr_data, val_data, te_data, tr_inds, val_inds, te_inds, transfor
 
         val_loader =  LinkNeighborLoader(val_data, num_neighbors=args.num_neighs, 
                                     edge_label_index=(('node', 'to', 'node'), val_edge_label_index), 
-                                    edge_label=val_edge_label, batch_size=128, shuffle=False, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4, time_attr='timestamps', edge_label_time=val_data['node', 'to', 'node'].timestamps[val_inds])
+                                    edge_label=val_edge_label, batch_size=128, shuffle=False, transform=transform, num_workers=0, pin_memory=True, persistent_workers=False, prefetch_factor=None, time_attr='timestamps', edge_label_time=val_data['node', 'to', 'node'].timestamps[val_inds])
         
         te_edge_label_index = te_data['node', 'to', 'node'].edge_index[:,te_inds]
         te_edge_label = te_data['node', 'to', 'node'].y[te_inds]
@@ -85,13 +85,13 @@ def get_loaders(tr_data, val_data, te_data, tr_inds, val_inds, te_inds, transfor
 
         te_loader =  LinkNeighborLoader(te_data, num_neighbors=args.num_neighs, 
                                     edge_label_index=(('node', 'to', 'node'), te_edge_label_index), 
-                                    edge_label=te_edge_label, batch_size=128, shuffle=False, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4, time_attr='timestamps', edge_label_time=te_data['node', 'to', 'node'].timestamps[te_inds])
+                                    edge_label=te_edge_label, batch_size=128, shuffle=False, transform=transform, num_workers=0, pin_memory=True, persistent_workers=False, prefetch_factor=None, time_attr='timestamps', edge_label_time=te_data['node', 'to', 'node'].timestamps[te_inds])
     else:
         tr_loader =  LinkNeighborLoader(tr_data, num_neighbors=args.num_neighs, batch_size=args.batch_size, shuffle=True, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4, time_attr='timestamps', edge_label_time=tr_data.timestamps)
         val_loader = LinkNeighborLoader(val_data,num_neighbors=args.num_neighs, edge_label_index=val_data.edge_index[:, val_inds],
-                                        edge_label=val_data.y[val_inds], batch_size=128, shuffle=False, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4, time_attr='timestamps', edge_label_time=val_data.timestamps[val_inds])
+                                        edge_label=val_data.y[val_inds], batch_size=128, shuffle=False, transform=transform, num_workers=0, pin_memory=True, persistent_workers=False, prefetch_factor=None, time_attr='timestamps', edge_label_time=val_data.timestamps[val_inds])
         te_loader =  LinkNeighborLoader(te_data,num_neighbors=args.num_neighs, edge_label_index=te_data.edge_index[:, te_inds],
-                                edge_label=te_data.y[te_inds], batch_size=128, shuffle=False, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4, time_attr='timestamps', edge_label_time=te_data.timestamps[te_inds])
+                                edge_label=te_data.y[te_inds], batch_size=128, shuffle=False, transform=transform, num_workers=0, pin_memory=True, persistent_workers=False, prefetch_factor=None, time_attr='timestamps', edge_label_time=te_data.timestamps[te_inds])
         
     return tr_loader, val_loader, te_loader
 
