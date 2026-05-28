@@ -4,9 +4,12 @@ from util import create_parser, set_seed, logger_setup
 from data_loading import get_data
 from training import train_gnn
 from inference import infer_gnn
+import torch
 import json
 
 def main():
+    # Enable TF32 for up to 3x faster matrix multiplications on A100/H100 Tensor Cores
+    torch.set_float32_matmul_precision('high')
     parser = create_parser()
     args = parser.parse_args()
 
