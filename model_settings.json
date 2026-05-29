@@ -23,7 +23,7 @@
   },
   "gat": {
     "params": {
-      "lr": 0.006, "n_hidden": 64, "n_heads": 4, "n_mlp_layers": 1, "n_gnn_layers": 2, "loss": "ce", "w_ce1": 1, "w_ce2": 6,
+      "lr": 0.006, "n_hidden": 64, "n_heads": 4, "n_mlp_layers": 1, "n_gnn_layers": 2, "loss": "ce", "w_ce1": 1, "w_ce2": 20,
       "norm_method": "z_normalize", "dropout": 0.009, "final_dropout": 0.1
     },
     "bayes_opt_params": {

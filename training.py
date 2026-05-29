@@ -24,7 +24,7 @@ class FocalLoss(torch.nn.Module):
 
 def train_homo(tr_loader, val_loader, te_loader, tr_inds, val_inds, te_inds, model, optimizer, loss_fn, args, config, device, val_data, te_data, data_config):
     #training
-    best_val_roc = 0
+    best_val_pr = 0
     patience = 15
     counter = 0
     for epoch in range(config.epochs):
@@ -71,12 +71,12 @@ def train_homo(tr_loader, val_loader, te_loader, tr_inds, val_inds, te_inds, mod
         wandb.log({"f1/validation": val_f1}, step=epoch)
         logging.info(f'Validation F1: {val_f1:.4f} | Prec: {val_prec:.4f} | Rec: {val_rec:.4f} | ROC-AUC: {val_roc:.4f} | PR-AUC: {val_pr:.4f}')
 
-        if val_roc > best_val_roc:
-            best_val_roc = val_roc
+        if val_pr > best_val_pr:
+            best_val_pr = val_pr
             counter = 0
             if args.save_model:
                 save_model(model, optimizer, epoch, args, data_config)
-                logging.info(f'New best validation ROC-AUC: {val_roc:.4f}. Model saved.')
+                logging.info(f'New best validation PR-AUC: {val_pr:.4f}. Model saved.')
         else:
             counter += 1
             logging.info(f'No validation improvement. Early stopping counter: {counter}/{patience}')

@@ -58,7 +58,7 @@ def infer_gnn(tr_data, val_data, te_data, tr_inds, val_inds, te_inds, args, data
     if args.reverse_mp:
         model = to_hetero(model, te_data.metadata(), aggr='mean')
     
-    if not (args.avg_tps or args.finetune):
+    if not ((hasattr(args, 'avg_tps') and args.avg_tps) or args.finetune):
         command = " ".join(sys.argv)
         name = ""
         name = '-'.join(name.split('-')[3:])
