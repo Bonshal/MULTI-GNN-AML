@@ -40,8 +40,8 @@ def main():
     config = Config()
     model = get_model(sample_batch, config, args)
 
-    # Note: we use checkpoint_None.tar based on the actual saved file
-    checkpoint = torch.load(f'{data_config["paths"]["model_to_load"]}/checkpoint_None.tar', map_location=device)
+    checkpoint_name = f'checkpoint_{args.unique_name}.tar' if args.unique_name else 'checkpoint_tgnn_gat_v2.tar'
+    checkpoint = torch.load(f'{data_config["paths"]["model_to_load"]}/{checkpoint_name}', map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.to(device)
     model.eval()
