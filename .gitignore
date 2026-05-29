@@ -2,7 +2,7 @@ data/
 AML_dataset/
 *.zip
 *.tar
-!models/checkpoint_medium_hi_run1.tar
+!models/*.tar
 __pycache__/
 logs/
 scratch/
