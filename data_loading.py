@@ -76,21 +76,21 @@ def get_data(args, data_config):
         daily_inds.append(day_inds)
         daily_trans.append(day_inds.shape[0])
     
-    split_per = [0.6, 0.2, 0.2]
-    daily_totals = np.array(daily_trans)
-    d_ts = daily_totals
-    I = list(range(len(d_ts)))
+    d_ts = np.array(daily_trans)
+    total_sum = float(d_ts.sum())
+    cum_d_ts = np.insert(np.cumsum(d_ts), 0, 0)
+    
     split_scores = dict()
-    for i,j in itertools.combinations(I, 2):
-        if j >= i:
-            split_totals = [d_ts[:i].sum(), d_ts[i:j].sum(), d_ts[j:].sum()]
-            split_totals_sum = np.sum(split_totals)
-            split_props = [v/split_totals_sum for v in split_totals]
-            split_error = [abs(v-t)/t for v,t in zip(split_props, split_per)]
-            score = max(split_error) #- (split_totals_sum/total) + 1
-            split_scores[(i,j)] = score
-        else:
-            continue
+    for i, j in itertools.combinations(range(len(d_ts)), 2):
+        prop_1 = cum_d_ts[i] / total_sum
+        prop_2 = (cum_d_ts[j] - cum_d_ts[i]) / total_sum
+        prop_3 = (total_sum - cum_d_ts[j]) / total_sum
+        
+        err_1 = abs(prop_1 - 0.6) / 0.6
+        err_2 = abs(prop_2 - 0.2) / 0.2
+        err_3 = abs(prop_3 - 0.2) / 0.2
+        
+        split_scores[(i, j)] = max(err_1, err_2, err_3)
 
     i,j = min(split_scores, key=split_scores.get)
     #split contains a list for each split (train, validation and test) and each list contains the days that are part of the respective split
