@@ -106,34 +106,34 @@ def evaluate_homo(loader, inds, model, data, device, args):
     pred_probs = []
     for batch in tqdm.tqdm(loader, disable=not args.tqdm):
         #select the seed edges from which the batch was created
-        inds = inds.detach().cpu()
-        batch_edge_inds = inds[batch.input_id.detach().cpu()]
-        batch_edge_ids = loader.data.edge_attr.detach().cpu()[batch_edge_inds, 0]
-        mask = torch.isin(batch.edge_attr[:, 0].detach().cpu(), batch_edge_ids)
+        batch_edge_inds = inds[batch.input_id]
+        batch_edge_ids = loader.data.edge_attr[batch_edge_inds, 0].to(device)
+        
+        batch = batch.to(device)
+        mask = torch.isin(batch.edge_attr[:, 0], batch_edge_ids)
 
         #add the seed edges that have not been sampled to the batch
-        missing = ~torch.isin(batch_edge_ids, batch.edge_attr[:, 0].detach().cpu())
+        missing = ~torch.isin(batch_edge_ids, batch.edge_attr[:, 0])
 
         if missing.sum() != 0 and (args.data == 'Small_J' or args.data == 'Small_Q'):
-            missing_ids = batch_edge_ids[missing].int()
-            n_ids = batch.n_id
+            missing_ids = batch_edge_ids[missing].cpu().int()
+            n_ids = batch.n_id.cpu()
             add_edge_index = data.edge_index[:, missing_ids].detach().clone()
             node_mapping = {value.item(): idx for idx, value in enumerate(n_ids)}
-            add_edge_index = torch.tensor([[node_mapping[val.item()] for val in row] for row in add_edge_index])
-            add_edge_attr = data.edge_attr[missing_ids, :].detach().clone()
-            add_y = data.y[missing_ids].detach().clone()
+            add_edge_index = torch.tensor([[node_mapping[val.item()] for val in row] for row in add_edge_index], device=device)
+            add_edge_attr = data.edge_attr[missing_ids, :].detach().clone().to(device)
+            add_y = data.y[missing_ids].detach().clone().to(device)
         
             batch.edge_index = torch.cat((batch.edge_index, add_edge_index), 1)
             batch.edge_attr = torch.cat((batch.edge_attr, add_edge_attr), 0)
             batch.y = torch.cat((batch.y, add_y), 0)
 
-            mask = torch.cat((mask, torch.ones(add_y.shape[0], dtype=torch.bool)))
+            mask = torch.cat((mask, torch.ones(add_y.shape[0], dtype=torch.bool, device=device)))
 
         #remove the unique edge id from the edge features, as it's no longer needed
         batch.edge_attr = batch.edge_attr[:, 1:]
         
         with torch.no_grad():
-            batch.to(device)
             out = model(batch.x, batch.edge_index, batch.edge_attr)
             out = out[mask]
             probs = torch.nn.functional.softmax(out, dim=-1)[:, 1]
@@ -167,35 +167,35 @@ def evaluate_hetero(loader, inds, model, data, device, args):
     ground_truths = []
     for batch in tqdm.tqdm(loader, disable=not args.tqdm):
         #select the seed edges from which the batch was created
-        inds = inds.detach().cpu()
-        batch_edge_inds = inds[batch['node', 'to', 'node'].input_id.detach().cpu()]
-        batch_edge_ids = loader.data['node', 'to', 'node'].edge_attr.detach().cpu()[batch_edge_inds, 0]
-        mask = torch.isin(batch['node', 'to', 'node'].edge_attr[:, 0].detach().cpu(), batch_edge_ids)
+        batch_edge_inds = inds[batch['node', 'to', 'node'].input_id]
+        batch_edge_ids = loader.data['node', 'to', 'node'].edge_attr[batch_edge_inds, 0].to(device)
+        
+        batch = batch.to(device)
+        mask = torch.isin(batch['node', 'to', 'node'].edge_attr[:, 0], batch_edge_ids)
 
         #add the seed edges that have not been sampled to the batch
-        missing = ~torch.isin(batch_edge_ids, batch['node', 'to', 'node'].edge_attr[:, 0].detach().cpu())
+        missing = ~torch.isin(batch_edge_ids, batch['node', 'to', 'node'].edge_attr[:, 0])
 
         if missing.sum() != 0 and (args.data == 'Small_J' or args.data == 'Small_Q'):
-            missing_ids = batch_edge_ids[missing].int()
-            n_ids = batch['node'].n_id
+            missing_ids = batch_edge_ids[missing].cpu().int()
+            n_ids = batch['node'].n_id.cpu()
             add_edge_index = data['node', 'to', 'node'].edge_index[:, missing_ids].detach().clone()
             node_mapping = {value.item(): idx for idx, value in enumerate(n_ids)}
-            add_edge_index = torch.tensor([[node_mapping[val.item()] for val in row] for row in add_edge_index])
-            add_edge_attr = data['node', 'to', 'node'].edge_attr[missing_ids, :].detach().clone()
-            add_y = data['node', 'to', 'node'].y[missing_ids].detach().clone()
+            add_edge_index = torch.tensor([[node_mapping[val.item()] for val in row] for row in add_edge_index], device=device)
+            add_edge_attr = data['node', 'to', 'node'].edge_attr[missing_ids, :].detach().clone().to(device)
+            add_y = data['node', 'to', 'node'].y[missing_ids].detach().clone().to(device)
         
             batch['node', 'to', 'node'].edge_index = torch.cat((batch['node', 'to', 'node'].edge_index, add_edge_index), 1)
             batch['node', 'to', 'node'].edge_attr = torch.cat((batch['node', 'to', 'node'].edge_attr, add_edge_attr), 0)
             batch['node', 'to', 'node'].y = torch.cat((batch['node', 'to', 'node'].y, add_y), 0)
 
-            mask = torch.cat((mask, torch.ones(add_y.shape[0], dtype=torch.bool)))
+            mask = torch.cat((mask, torch.ones(add_y.shape[0], dtype=torch.bool, device=device)))
 
         #remove the unique edge id from the edge features, as it's no longer needed
         batch['node', 'to', 'node'].edge_attr = batch['node', 'to', 'node'].edge_attr[:, 1:]
         batch['node', 'rev_to', 'node'].edge_attr = batch['node', 'rev_to', 'node'].edge_attr[:, 1:]
         
         with torch.no_grad():
-            batch.to(device)
             out = model(batch.x_dict, batch.edge_index_dict, batch.edge_attr_dict)
             out = out[('node', 'to', 'node')]
             out = out[mask]

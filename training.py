@@ -34,15 +34,14 @@ def train_homo(tr_loader, val_loader, te_loader, tr_inds, val_inds, te_inds, mod
         for batch in tqdm.tqdm(tr_loader, disable=not args.tqdm):
             optimizer.zero_grad()
             #select the seed edges from which the batch was created
-            inds = tr_inds.detach().cpu()
-            batch_edge_inds = inds[batch.input_id.detach().cpu()]
-            batch_edge_ids = tr_loader.data.edge_attr.detach().cpu()[batch_edge_inds, 0]
-            mask = torch.isin(batch.edge_attr[:, 0].detach().cpu(), batch_edge_ids)
+            batch_edge_inds = tr_inds[batch.input_id]
+            batch_edge_ids = tr_loader.data.edge_attr[batch_edge_inds, 0].to(device)
+            
+            batch = batch.to(device)
+            mask = torch.isin(batch.edge_attr[:, 0], batch_edge_ids)
 
             #remove the unique edge id from the edge features, as it's no longer needed
             batch.edge_attr = batch.edge_attr[:, 1:]
-
-            batch.to(device)
             out = model(batch.x, batch.edge_index, batch.edge_attr)
             pred = out[mask]
             ground_truth = batch.y[mask]
@@ -111,16 +110,15 @@ def train_hetero(tr_loader, val_loader, te_loader, tr_inds, val_inds, te_inds, m
         for batch in tqdm.tqdm(tr_loader, disable=not args.tqdm):
             optimizer.zero_grad()
             #select the seed edges from which the batch was created
-            inds = tr_inds.detach().cpu()
-            batch_edge_inds = inds[batch['node', 'to', 'node'].input_id.detach().cpu()]
-            batch_edge_ids = tr_loader.data['node', 'to', 'node'].edge_attr.detach().cpu()[batch_edge_inds, 0]
-            mask = torch.isin(batch['node', 'to', 'node'].edge_attr[:, 0].detach().cpu(), batch_edge_ids)
+            batch_edge_inds = tr_inds[batch['node', 'to', 'node'].input_id]
+            batch_edge_ids = tr_loader.data['node', 'to', 'node'].edge_attr[batch_edge_inds, 0].to(device)
+            
+            batch = batch.to(device)
+            mask = torch.isin(batch['node', 'to', 'node'].edge_attr[:, 0], batch_edge_ids)
             
             #remove the unique edge id from the edge features, as it's no longer needed
             batch['node', 'to', 'node'].edge_attr = batch['node', 'to', 'node'].edge_attr[:, 1:]
             batch['node', 'rev_to', 'node'].edge_attr = batch['node', 'rev_to', 'node'].edge_attr[:, 1:]
-
-            batch.to(device)
             out = model(batch.x_dict, batch.edge_index_dict, batch.edge_attr_dict)
             out = out[('node', 'to', 'node')]
             pred = out[mask]
