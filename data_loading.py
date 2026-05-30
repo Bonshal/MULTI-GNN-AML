@@ -94,7 +94,7 @@ def get_data(args, data_config):
 
     i,j = min(split_scores, key=split_scores.get)
     #split contains a list for each split (train, validation and test) and each list contains the days that are part of the respective split
-    split = [list(range(i)), list(range(i, j)), list(range(j, len(daily_totals)))]
+    split = [list(range(i)), list(range(i, j)), list(range(j, len(d_ts)))]
     logging.info(f'Calculate split: {split}')
 
     #Now, we seperate the transactions based on their indices in the timestamp array
