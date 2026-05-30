@@ -154,15 +154,24 @@ def get_data(args, data_config):
         logging.info(f"Done: adding time-deltas")
     
     #Normalize data
-    x_mean, x_std = get_norm_stats(tr_data.x)
-    torch.save({'mean': x_mean, 'std': x_std}, f"{data_config['paths']['aml_data']}/{args.data}/processed/x_norm_stats.pt")
+    if args.inference:
+        logging.info("Inference mode: Loading locked Medium_HI normalization stats for robust cross-dataset generalization.")
+        x_norm = torch.load(f"{data_config['paths']['aml_data']}/Medium_HI/processed/x_norm_stats.pt", weights_only=False)
+        x_mean, x_std = x_norm['mean'], x_norm['std']
+    else:
+        x_mean, x_std = get_norm_stats(tr_data.x)
+        torch.save({'mean': x_mean, 'std': x_std}, f"{data_config['paths']['aml_data']}/{args.data}/processed/x_norm_stats.pt")
     tr_data.x = apply_norm(tr_data.x, x_mean, x_std)
     val_data.x = apply_norm(val_data.x, x_mean, x_std)
     te_data.x = apply_norm(te_data.x, x_mean, x_std)
 
     if not args.model == 'rgcn':
-        e_mean, e_std = get_norm_stats(tr_data.edge_attr)
-        torch.save({'mean': e_mean, 'std': e_std}, f"{data_config['paths']['aml_data']}/{args.data}/processed/edge_norm_stats.pt")
+        if args.inference:
+            e_norm = torch.load(f"{data_config['paths']['aml_data']}/Medium_HI/processed/edge_norm_stats.pt", weights_only=False)
+            e_mean, e_std = e_norm['mean'], e_norm['std']
+        else:
+            e_mean, e_std = get_norm_stats(tr_data.edge_attr)
+            torch.save({'mean': e_mean, 'std': e_std}, f"{data_config['paths']['aml_data']}/{args.data}/processed/edge_norm_stats.pt")
         tr_data.edge_attr = apply_norm(tr_data.edge_attr, e_mean, e_std)
         val_data.edge_attr = apply_norm(val_data.edge_attr, e_mean, e_std)
         te_data.edge_attr = apply_norm(te_data.edge_attr, e_mean, e_std)
