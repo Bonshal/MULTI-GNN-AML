@@ -6,6 +6,7 @@ from torch_geometric.data import Data, HeteroData
 from torch_geometric.loader import LinkNeighborLoader
 from sklearn.metrics import f1_score
 import json
+import os
 
 class AddEgoIds(BaseTransform):
     r"""Add IDs to the centre nodes of the batch.
@@ -67,9 +68,10 @@ def get_loaders(tr_data, val_data, te_data, tr_inds, val_inds, te_inds, transfor
         tr_edge_label = tr_data['node', 'to', 'node'].y
 
 
+        workers = max(1, (os.cpu_count() or 4) - 2)
         tr_loader =  LinkNeighborLoader(tr_data, num_neighbors=args.num_neighs, 
                                     edge_label_index=(('node', 'to', 'node'), tr_edge_label_index), 
-                                    edge_label=tr_edge_label, batch_size=args.batch_size, shuffle=True, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4)
+                                    edge_label=tr_edge_label, batch_size=args.batch_size, shuffle=True, transform=transform, num_workers=workers, pin_memory=True, persistent_workers=True, prefetch_factor=4)
         
         val_edge_label_index = val_data['node', 'to', 'node'].edge_index[:,val_inds]
         val_edge_label = val_data['node', 'to', 'node'].y[val_inds]
@@ -77,7 +79,7 @@ def get_loaders(tr_data, val_data, te_data, tr_inds, val_inds, te_inds, transfor
 
         val_loader =  LinkNeighborLoader(val_data, num_neighbors=args.num_neighs, 
                                     edge_label_index=(('node', 'to', 'node'), val_edge_label_index), 
-                                    edge_label=val_edge_label, batch_size=args.batch_size, shuffle=False, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4)
+                                    edge_label=val_edge_label, batch_size=args.batch_size, shuffle=False, transform=transform, num_workers=workers, pin_memory=True, persistent_workers=True, prefetch_factor=4)
         
         te_edge_label_index = te_data['node', 'to', 'node'].edge_index[:,te_inds]
         te_edge_label = te_data['node', 'to', 'node'].y[te_inds]
@@ -85,13 +87,14 @@ def get_loaders(tr_data, val_data, te_data, tr_inds, val_inds, te_inds, transfor
 
         te_loader =  LinkNeighborLoader(te_data, num_neighbors=args.num_neighs, 
                                     edge_label_index=(('node', 'to', 'node'), te_edge_label_index), 
-                                    edge_label=te_edge_label, batch_size=args.batch_size, shuffle=False, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4)
+                                    edge_label=te_edge_label, batch_size=args.batch_size, shuffle=False, transform=transform, num_workers=workers, pin_memory=True, persistent_workers=True, prefetch_factor=4)
     else:
-        tr_loader =  LinkNeighborLoader(tr_data, num_neighbors=args.num_neighs, batch_size=args.batch_size, shuffle=True, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4)
+        workers = max(1, (os.cpu_count() or 4) - 2)
+        tr_loader =  LinkNeighborLoader(tr_data, num_neighbors=args.num_neighs, batch_size=args.batch_size, shuffle=True, transform=transform, num_workers=workers, pin_memory=True, persistent_workers=True, prefetch_factor=4)
         val_loader = LinkNeighborLoader(val_data,num_neighbors=args.num_neighs, edge_label_index=val_data.edge_index[:, val_inds],
-                                        edge_label=val_data.y[val_inds], batch_size=args.batch_size, shuffle=False, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4)
+                                        edge_label=val_data.y[val_inds], batch_size=args.batch_size, shuffle=False, transform=transform, num_workers=workers, pin_memory=True, persistent_workers=True, prefetch_factor=4)
         te_loader =  LinkNeighborLoader(te_data,num_neighbors=args.num_neighs, edge_label_index=te_data.edge_index[:, te_inds],
-                                edge_label=te_data.y[te_inds], batch_size=args.batch_size, shuffle=False, transform=transform, num_workers=16, pin_memory=True, persistent_workers=True, prefetch_factor=4)
+                                edge_label=te_data.y[te_inds], batch_size=args.batch_size, shuffle=False, transform=transform, num_workers=workers, pin_memory=True, persistent_workers=True, prefetch_factor=4)
         
     return tr_loader, val_loader, te_loader
 
