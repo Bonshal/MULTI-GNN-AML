@@ -2,6 +2,8 @@ import torch
 from torch_geometric.data import Data, HeteroData
 from torch_geometric.typing import OptTensor
 import numpy as np
+import os
+from multiprocessing import Pool
 
 def to_adj_nodes_with_times(data):
     num_nodes = data.num_nodes
@@ -28,10 +30,9 @@ def to_adj_edges_with_times(data):
         adj_edges_in[v] += [(i, u, t)]
     return adj_edges_in, adj_edges_out
 
-def ports(edge_index, adj_list):
-    ports = torch.zeros(edge_index.shape[1], 1)
+def _process_port_chunk(chunk):
     ports_dict = {}
-    for v, nbs in adj_list.items():
+    for v, nbs in chunk:
         if len(nbs) < 1: continue
         a = np.array(nbs)
         a = a[a[:, -1].argsort()]
@@ -39,23 +40,54 @@ def ports(edge_index, adj_list):
         nbs_unique = a[np.sort(idx)][:,0]
         for i, u in enumerate(nbs_unique):
             ports_dict[(u,v)] = i
-    for i, e in enumerate(edge_index.T):
-        ports[i] = ports_dict[tuple(e.numpy())]
-    return ports
+    return ports_dict
 
-def time_deltas(data, adj_edges_list):
-    time_deltas = torch.zeros(data.edge_index.shape[1], 1)
-    if data.timestamps is None:
-        return time_deltas
-    for v, edges in adj_edges_list.items():
+def ports(edge_index, adj_list):
+    ports_out = torch.zeros(edge_index.shape[1], 1)
+    
+    items = list(adj_list.items())
+    num_cores = os.cpu_count() or 1
+    chunk_size = max(1, len(items) // (num_cores * 4))
+    chunks = [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
+    
+    ports_dict = {}
+    with Pool(num_cores) as p:
+        results = p.map(_process_port_chunk, chunks)
+        for res in results:
+            ports_dict.update(res)
+            
+    for i, e in enumerate(edge_index.T):
+        ports_out[i] = ports_dict[tuple(e.numpy())]
+    return ports_out
+
+def _process_td_chunk(chunk):
+    results = []
+    for v, edges in chunk:
         if len(edges) < 1: continue
         a = np.array(edges)
         a = a[a[:, -1].argsort()]
         a_tds = [0] + [a[i+1,-1] - a[i,-1] for i in range(a.shape[0]-1)]
         tds = np.hstack((a[:,0].reshape(-1,1), np.array(a_tds).reshape(-1,1)))
-        for i,td in tds:
-            time_deltas[i] = td
-    return time_deltas
+        results.append(tds)
+    return results
+
+def time_deltas(data, adj_edges_list):
+    time_deltas_out = torch.zeros(data.edge_index.shape[1], 1)
+    if data.timestamps is None:
+        return time_deltas_out
+        
+    items = list(adj_edges_list.items())
+    num_cores = os.cpu_count() or 1
+    chunk_size = max(1, len(items) // (num_cores * 4))
+    chunks = [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
+    
+    with Pool(num_cores) as p:
+        results = p.map(_process_td_chunk, chunks)
+        for res_list in results:
+            for tds in res_list:
+                for i, td in tds:
+                    time_deltas_out[int(i)] = td
+    return time_deltas_out
 
 class GraphData(Data):
     '''This is the homogenous graph object we use for GNN training if reverse MP is not enabled'''
@@ -133,10 +165,14 @@ class HeteroGraphData(HeteroData):
         self['node', 'rev_to', 'node'].edge_attr = torch.cat([self['node', 'rev_to', 'node'].edge_attr, out_tds], dim=1)
         return self
     
-def z_norm(data):
+def get_norm_stats(data):
+    mean = data.mean(0).unsqueeze(0)
     std = data.std(0).unsqueeze(0)
     std = torch.where(std == 0, torch.tensor(1, dtype=torch.float32).cpu(), std)
-    return (data - data.mean(0).unsqueeze(0)) / std
+    return mean, std
+
+def apply_norm(data, mean, std):
+    return (data - mean) / std
 
 def create_hetero_obj(x,  y,  edge_index,  edge_attr, timestamps, args):
     '''Creates a heterogenous graph object for reverse message passing'''

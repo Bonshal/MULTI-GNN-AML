@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import logging
 import itertools
-from data_util import GraphData, HeteroData, z_norm, create_hetero_obj
+from data_util import GraphData, HeteroData, get_norm_stats, apply_norm, create_hetero_obj
 
 def get_data(args, data_config):
     '''Loads the AML transaction data.
@@ -142,11 +142,24 @@ def get_data(args, data_config):
         logging.info(f"Done: adding time-deltas")
     
     #Normalize data
-    tr_data.x = val_data.x = te_data.x = z_norm(tr_data.x)
+    x_mean, x_std = get_norm_stats(tr_data.x)
+    torch.save({'mean': x_mean, 'std': x_std}, f"{data_config['paths']['aml_data']}/{args.data}/processed/x_norm_stats.pt")
+    tr_data.x = apply_norm(tr_data.x, x_mean, x_std)
+    val_data.x = apply_norm(val_data.x, x_mean, x_std)
+    te_data.x = apply_norm(te_data.x, x_mean, x_std)
+
     if not args.model == 'rgcn':
-        tr_data.edge_attr, val_data.edge_attr, te_data.edge_attr = z_norm(tr_data.edge_attr), z_norm(val_data.edge_attr), z_norm(te_data.edge_attr)
+        e_mean, e_std = get_norm_stats(tr_data.edge_attr)
+        torch.save({'mean': e_mean, 'std': e_std}, f"{data_config['paths']['aml_data']}/{args.data}/processed/edge_norm_stats.pt")
+        tr_data.edge_attr = apply_norm(tr_data.edge_attr, e_mean, e_std)
+        val_data.edge_attr = apply_norm(val_data.edge_attr, e_mean, e_std)
+        te_data.edge_attr = apply_norm(te_data.edge_attr, e_mean, e_std)
     else:
-        tr_data.edge_attr[:, :-1], val_data.edge_attr[:, :-1], te_data.edge_attr[:, :-1] = z_norm(tr_data.edge_attr[:, :-1]), z_norm(val_data.edge_attr[:, :-1]), z_norm(te_data.edge_attr[:, :-1])
+        e_mean, e_std = get_norm_stats(tr_data.edge_attr[:, :-1])
+        torch.save({'mean': e_mean, 'std': e_std}, f"{data_config['paths']['aml_data']}/{args.data}/processed/edge_norm_stats.pt")
+        tr_data.edge_attr[:, :-1] = apply_norm(tr_data.edge_attr[:, :-1], e_mean, e_std)
+        val_data.edge_attr[:, :-1] = apply_norm(val_data.edge_attr[:, :-1], e_mean, e_std)
+        te_data.edge_attr[:, :-1] = apply_norm(te_data.edge_attr[:, :-1], e_mean, e_std)
 
     #Create heterogenous if reverese MP is enabled
     #TODO: if I observe wierd behaviour, maybe add .detach.clone() to all torch tensors, but I don't think they're attached to any computation graph just yet
