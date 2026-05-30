@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import torch
+torch.set_num_threads(1)
 import logging
 import itertools
 from data_util import GraphData, HeteroData, get_norm_stats, apply_norm, create_hetero_obj
@@ -126,6 +127,17 @@ def get_data(args, data_config):
     tr_data = GraphData (x=tr_x,  y=tr_y,  edge_index=tr_edge_index,  edge_attr=tr_edge_attr,  timestamps=tr_edge_times )
     val_data = GraphData(x=val_x, y=val_y, edge_index=val_edge_index, edge_attr=val_edge_attr, timestamps=val_edge_times)
     te_data = GraphData (x=te_x,  y=te_y,  edge_index=te_edge_index,  edge_attr=te_edge_attr,  timestamps=te_edge_times )
+
+    ckpt_path = f"data/{args.data}_mask_checkpoint.pt"
+    if os.path.exists(ckpt_path):
+        print("Loading PyTorch boolean mask checkpoint from disk...")
+        data = torch.load(ckpt_path)
+    else:
+        print("Saving PyTorch boolean mask checkpoint to disk...")
+        # (Assuming 'data' object definition or placeholder logic here)
+        torch.save(tr_data, ckpt_path)
+        
+    print("Starting CPU-bound PyG graph generation (Time Deltas & Ports)...")
 
     #Adding ports and time-deltas if applicable
     if args.ports:

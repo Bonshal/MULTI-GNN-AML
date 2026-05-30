@@ -3,12 +3,7 @@ from torch_geometric.data import Data, HeteroData
 from torch_geometric.typing import OptTensor
 import numpy as np
 import os
-import torch.multiprocessing as mp
-try:
-    mp.set_start_method('spawn', force=True)
-except RuntimeError:
-    pass
-Pool = mp.Pool
+from multiprocessing import Pool
 
 def to_adj_nodes_with_times(data):
     num_nodes = data.num_nodes
